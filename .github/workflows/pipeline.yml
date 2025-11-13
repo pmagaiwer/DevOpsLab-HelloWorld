@@ -1,0 +1,108 @@
+name: HTML Validation Pipeline
+
+on: 
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  html-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Executar validação HTML
+        run: |
+          echo "🚀 Iniciando pipeline de validação HTML"
+          chmod +x validate-html.sh
+          ./validate-html.sh
+
+      - name: Verificar arquivos estáticos
+        run: |
+          echo "🔍 Verificando arquivos estáticos..."
+          
+          # Verificar se CSS existe
+          if [ -f "static/css/main.css" ]; then
+            echo "✅ Arquivo CSS principal encontrado"
+          else
+            echo "❌ Arquivo CSS principal não encontrado"
+            exit 1
+          fi
+          
+          # Verificar se diretório de imagens existe
+          if [ -d "static/imgs" ]; then
+            echo "✅ Diretório de imagens encontrado"
+          else
+            echo "❌ Diretório de imagens não encontrado"
+            exit 1
+          fi
+
+      - name: Validação sintática HTML
+        run: |
+          echo "🔍 Verificando sintaxe HTML..."
+          # Verificar se não há tags não fechadas básicas
+          python3 -c "
+          import re
+          
+          with open('templates/index.html', 'r', encoding='utf-8') as f:
+              content = f.read()
+          
+          # Verificações básicas de sintaxe
+          errors = []
+          
+          # Verificar se todas as tags html, head, body estão fechadas
+          if content.count('<html') != content.count('</html>'):
+              errors.append('Tag html não fechada corretamente')
+              
+          if content.count('<head>') != content.count('</head>'):
+              errors.append('Tag head não fechada corretamente')
+              
+          if content.count('<body>') != content.count('</body>'):
+              errors.append('Tag body não fechada corretamente')
+          
+          # Verificar estrutura básica
+          if not re.search(r'<!DOCTYPE html>', content, re.IGNORECASE):
+              errors.append('DOCTYPE não encontrado')
+              
+          if errors:
+              for error in errors:
+                  print(f'❌ {error}')
+              exit(1)
+          else:
+              print('✅ Sintaxe HTML básica válida')
+          "
+
+  commit-changes:
+    needs: html-validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Verificar mudanças e fazer commit
+        run: |
+          echo "📝 Verificando se há mudanças para commit..."
+          
+          # Verificar se há mudanças
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "ℹ️  Nenhuma mudança detectada para commit"
+          else
+            echo "📝 Mudanças detectadas, fazendo commit..."
+            git add .
+            git commit -m "🔄 Validação HTML executada com sucesso - $(date '+%Y-%m-%d %H:%M:%S')"
+            git push
+            echo "✅ Commit realizado com sucesso!"
+          fi
